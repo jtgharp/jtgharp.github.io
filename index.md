@@ -1,7 +1,3 @@
-<!DOCTYPE html>
-<html>
-<body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
-</body>
-</html>
+# Welcome
+[The project Rmd file is here] (https://github.com/jtgharp/FinalProjectMachineLearning/blob/master/MLProject.Rmd)
+[The knitr produced html out put file is here] (https://github.com/jtgharp/FinalProjectMachineLearning/blob/master/MLProject.html )
