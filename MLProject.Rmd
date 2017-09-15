@@ -1,0 +1,106 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Jagannath Gharpure"
+date: "September 11, 2017"
+output: html_document
+---
+
+## Introduction  
+Eduardo Velloso et. al. in their paper titled "Qualitative Activity Recognition of Weight Lifting Exercises",illustrate their approach on the example problem of qualitatively assessing and providing feedback on weight lifting exercises. The researchers collected the data from accelerometers on the belt, forearm, arm, and dumbell of 6 research study participants. The training data consists of accelerometer data and a label identifying the quality of the activity the participant was doing (column name is classe). The second data set;i.e., the testing data consists of accelerometer data BUT WITHOUT the identifying label (classe column not provided). The objective of this project is to predict the labels (A B C D and E) for the 20 test set observations in the test data.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r getReqdLibs, echo= FALSE, warning=FALSE}
+      suppressPackageStartupMessages(library(AppliedPredictiveModeling, quietly=TRUE))
+      suppressPackageStartupMessages(library(caret, quietly=TRUE))
+      suppressPackageStartupMessages(library(rattle, quietly=TRUE))
+      suppressPackageStartupMessages(library(rpart.plot, quietly=TRUE))
+      suppressPackageStartupMessages(library(randomForest, quietly=TRUE))
+```
+
+## Data Download and Data Preparation  
+Here, we first read the two files, for training data and test data.  Then we replace all "#DIV/0!", and " " with NAs.  I had explored the data using head, dim and names functions.  The first 5 columns of the data set do not make sense. So I first remove those column from both data sets.  Then I check for the columns in which the data does not vary much (near zero variance) and remove those columns from both data sets. Then I checked for in each column how many NAs occur.  If there are too many NAs in a column (a variable) then I remove that column. Finally I divide the training data in two  sets; training set and validation set.  
+
+```{r readFiles , cache=TRUE}
+      #downloading training and testing data sets and storing in working directory
+      url1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+      download.file(url1, "pml-training.csv")
+      url2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+      download.file(url2, "pml-testing.csv")
+      #reading training and testing CSV files and replacing "#DIV/0!", and " " with NAs
+      pmlTrainData <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+      pmlTestData <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+      #first five columns do not make sense to me for prediction.  Removing them
+      pmlTrainData <- pmlTrainData[, -(1:5)]
+      pmlTestData <- pmlTestData[, -(1:5)]
+      #removing variables with nearly zero variance from training and testing data sets
+      nzvar <- nearZeroVar(pmlTrainData)
+      pmlTrainData <- pmlTrainData[, -nzvar]
+      pmlTestData <- pmlTestData[, -nzvar]
+      #Now removing columns (variables) with more than 90% NA values, from training and testing data sets
+      tooManyNAs <- sapply(pmlTrainData, function(x) mean(is.na(x))) > 0.90
+      pmlTrainData <- pmlTrainData[, tooManyNAs==F]
+      pmlTestData <- pmlTestData[, tooManyNAs==F]
+      
+      set.seed(12345)
+      #partition pmlTrain data into training set and validation set to do estimation of out of sample error 
+      inTrain <- createDataPartition(y=pmlTrainData$classe, p=0.7, list=F)
+      pmlTrainData1 <- pmlTrainData[inTrain, ]
+      pmlTrainData2ForValidation <- pmlTrainData[-inTrain, ]
+```
+
+## Model Fitting  
+I initially train the model on the subset training data and validate using the validation set (i.e. I do prediction on this validation data set).  This is done to estimate the out of samnple error.  I chose adaptive_CV  (Cross Validation) method even though this is experimental method per the help file for the function trainControl.  I found the adaptive_CV to be very effective in choosing optimal models (for Random Forest method "rf").  I used confusion matrix to estimate "out of sample error"" after I ran the fitted model on the validation set.  It was acceptable.
+```{r fitModel , cache=TRUE}
+
+fitControl <- trainControl(method="adaptive_cv", verboseIter=F)
+fit <- train(classe ~ ., data=pmlTrainData1, method="rf",trControl=fitControl)
+# print final model to see tuning parameters that the adaptive_CV chose.  In adaptive_CV method, as resampling continues, a futility analysis is conducted and models with a low probability of being optimal are removed. These features are experimental per the help file for function 'trainControl'
+fit$finalModel
+```
+
+The above adaptive_CV fitted model used 500 trees and tried 27 variables at each split.  Also, per the UC Berkley stat department (see url here -- https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm), In random forests, "...an unbiased estimate of the test set error is estimated internally, during the run  and is reported as OOB...""  Based on the print out of the fited final model above, we see OOB to be 0.2 %
+
+```{r predictOnValidationSet , cache=TRUE}
+
+# Now we use above model to predict classe in validation set (pmlTrainData2ForValidation)
+predictOnValData <- predict(fit, newdata=pmlTrainData2ForValidation)
+# And then show confusion matrix to get an estimate of the out-of-sample error
+confusionMatrix(pmlTrainData2ForValidation$classe, predictOnValData)
+```
+
+## Final Model  
+Since the random forest model works very well (with adaptive_CV training control) as evdienced by accuracy and estimates of out of sample error I decided to use this as my final model , rather than use any other methods or models.  So I decided to use the COMPLETE training set to train the model (possibly for better accuracy) and then I  use it to predict on the test data set of the 20 observations. After predicting "classe" for the 20 observations I write the answers to 20 files.  Each file name is the problem#.  I also write ALL answers in one file named allAnswers.tx.  It makes easy for me to look at this "all answers file" (that has problem # and the answer) and then select the answers in quiz without missing the order while selecitng
+
+```{r fitModelOnTotalTrainData , cache=TRUE}
+
+fitControlTotTrnData <- trainControl(method="adaptive_cv", verboseIter=F)
+fitTotTrnData <- train(classe ~ ., data=pmlTrainData, method="rf",trControl=fitControlTotTrnData)
+# print final model to see tuning parameters that the adaptive_CV chose.  In adaptive_CV method, as resampling continues, a futility analysis is conducted and models with a low probability of being optimal are removed. These features are experimental per the help file for function 'trainControl'
+fitTotTrnData$finalModel
+```
+
+## Predicting on Test Data  
+Now I use above model to predict classe in TEST set.  Then  I write each prediction in a file (20 files total).  Each file name is the problem_id_number.txt.  I also write all answers to one file named allanswers.txt with problem# and answer next to each other.  It was easy for me to look at this file and respond to quiz without missing the order
+
+```{r predictOnTestSet , cache=TRUE}
+# Now we use above model to predict classe in TEST set (pmlTestData)
+predictOnTestData <- predict(fitTotTrnData, newdata=pmlTestData)
+# And then define a function to write predicitons to files.  file name is based on problem id
+pmlPredsWriteTofiles <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+# and now write predicitons to files 
+pmlPredsWriteTofiles(predictOnTestData)
+# I will also write all predictions in one single file with observation# prepended.  That way when I select answers in the quiz it becomes easy for me without missing the order.
+
+for(i in 1:length(predictOnTestData)) { write( paste(i,predictOnTestData[i]), "allanswers.txt", append=TRUE)  }
+
+```
+
